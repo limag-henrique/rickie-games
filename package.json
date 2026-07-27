@@ -1,0 +1,15 @@
+{
+  "name": "rickie-games",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "predev": "npm run build",
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @rickie/server\" \"npm run dev -w @rickie/web\"",
+    "build": "npm run build -w @rickie/game-core && npm run build -w @rickie/content-schema && npm run build -w @rickie/protocol && npm run build -w @rickie/game-engines && npm run build -w @rickie/server && npm run build -w @rickie/web",
+    "typecheck": "npm run typecheck -w @rickie/game-core && npm run typecheck -w @rickie/content-schema && npm run typecheck -w @rickie/protocol && npm run typecheck -w @rickie/game-engines && npm run typecheck -w @rickie/server && npm run typecheck -w @rickie/web",
+    "lint": "npm run lint --workspaces",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {"concurrently": "^9.1.2", "typescript": "^5.7.3"}
+}
