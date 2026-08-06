@@ -1,5 +1,8 @@
 import "dotenv/config";
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
@@ -8,39 +11,59 @@ import { commandSchema, createRoomSchema, joinRoomSchema, PROTOCOL_VERSION } fro
 import { RoomStore, type Room } from "./room-store.js";
 import { gameCatalog } from "./game-catalog.js";
 
-const app=express();
+type AppOptions={origin?:string;store?:RoomStore;webDistPath?:string};
+type SocketData={roomCode:string;playerId?:string;shared:boolean};
+
+const modulePath=fileURLToPath(import.meta.url);
+const defaultWebDistPath=resolve(dirname(modulePath),"../../web/dist");
+
+export function createApp(options:AppOptions={}) {
+  const app=express();
+  const origin=options.origin??process.env.WEB_ORIGIN??"http://localhost:5173";
+  const store=options.store??new RoomStore();
+  const webDistPath=options.webDistPath??process.env.WEB_DIST_DIR??defaultWebDistPath;
+  app.locals.origin=origin;
+  app.locals.store=store;
+  app.use(helmet({crossOriginResourcePolicy:false}));
+  app.use(cors({origin,methods:["GET","POST"]}));
+  app.use(express.json({limit:"16kb"}));
+
+  app.get("/health/live",(_req,res)=>res.json({status:"ok"}));
+  app.get("/health/ready",(_req,res)=>res.json({status:"ok",persistence:"memory",redis:"not-configured"}));
+  app.get("/api/games",(_req,res)=>res.json({games:gameCatalog.list().map(game=>({id:game.id,title:game.title,summary:game.summary,instructions:game.instructions}))}));
+  app.post("/api/rooms",(req,res)=>{
+    const parsed=createRoomSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({error:"INVALID_INPUT",details:parsed.error.flatten()});
+    const {room,credential}=store.create(parsed.data.roomName,parsed.data.hostNickname,parsed.data.gameId,parsed.data.timerSeconds);
+    const game=gameCatalog.get(room.gameId);
+    res.status(201).json({code:room.code,gameId:room.gameId,game:{id:game.id,title:game.title,summary:game.summary,instructions:game.instructions},playerId:credential.playerId,token:credential.token,sharedUrl:`${origin}/shared/${room.code}`,joinUrl:`${origin}/room/${room.code}`});
+  });
+  app.get("/api/rooms/:code",(req,res)=>{
+    const room=store.get(req.params.code); if (!room) return res.status(404).json({error:"ROOM_NOT_FOUND"});
+    const game=gameCatalog.get(room.gameId);
+    res.json({code:room.code,name:room.name,gameId:room.gameId,game:{id:game.id,title:game.title,summary:game.summary,instructions:game.instructions},phase:room.state.phase,players:room.engine.getPublicView(room.state).players});
+  });
+  app.post("/api/rooms/:code/join",(req,res)=>{
+    const room=store.get(req.params.code); if (!room) return res.status(404).json({error:"ROOM_NOT_FOUND"});
+    const parsed=joinRoomSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({error:"INVALID_INPUT"});
+    try { const {player,credential}=store.join(room,parsed.data.nickname,parsed.data.role); publish(room); res.status(201).json({code:room.code,gameId:room.gameId,playerId:player.id,token:credential.token}); }
+    catch(error) { res.status(409).json({error:error instanceof Error?error.message:"JOIN_FAILED"}); }
+  });
+
+  if (existsSync(join(webDistPath,"index.html"))) {
+    app.use(express.static(webDistPath));
+    app.get("*",(_req,res)=>res.sendFile(join(webDistPath,"index.html")));
+  }
+
+  return app;
+}
+
 const port=Number(process.env.PORT??3001);
 const origin=process.env.WEB_ORIGIN??"http://localhost:5173";
 const store=new RoomStore();
-app.use(helmet({crossOriginResourcePolicy:false}));
-app.use(cors({origin,methods:["GET","POST"]}));
-app.use(express.json({limit:"16kb"}));
-
-app.get("/health/live",(_req,res)=>res.json({status:"ok"}));
-app.get("/health/ready",(_req,res)=>res.json({status:"ok",persistence:"memory",redis:"not-configured"}));
-app.get("/api/games",(_req,res)=>res.json({games:gameCatalog.list().map(game=>({id:game.id,title:game.title,summary:game.summary,instructions:game.instructions}))}));
-app.post("/api/rooms",(req,res)=>{
-  const parsed=createRoomSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({error:"INVALID_INPUT",details:parsed.error.flatten()});
-  const {room,credential}=store.create(parsed.data.roomName,parsed.data.hostNickname,parsed.data.gameId,parsed.data.timerSeconds);
-  const game=gameCatalog.get(room.gameId);
-  res.status(201).json({code:room.code,gameId:room.gameId,game:{id:game.id,title:game.title,summary:game.summary,instructions:game.instructions},playerId:credential.playerId,token:credential.token,sharedUrl:`${origin}/shared/${room.code}`,joinUrl:`${origin}/room/${room.code}`});
-});
-app.get("/api/rooms/:code",(req,res)=>{
-  const room=store.get(req.params.code); if (!room) return res.status(404).json({error:"ROOM_NOT_FOUND"});
-  const game=gameCatalog.get(room.gameId);
-  res.json({code:room.code,name:room.name,gameId:room.gameId,game:{id:game.id,title:game.title,summary:game.summary,instructions:game.instructions},phase:room.state.phase,players:room.engine.getPublicView(room.state).players});
-});
-app.post("/api/rooms/:code/join",(req,res)=>{
-  const room=store.get(req.params.code); if (!room) return res.status(404).json({error:"ROOM_NOT_FOUND"});
-  const parsed=joinRoomSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({error:"INVALID_INPUT"});
-  try { const {player,credential}=store.join(room,parsed.data.nickname,parsed.data.role); publish(room); res.status(201).json({code:room.code,gameId:room.gameId,playerId:player.id,token:credential.token}); }
-  catch(error) { res.status(409).json({error:error instanceof Error?error.message:"JOIN_FAILED"}); }
-});
-
+const app=createApp({origin,store});
 const http=createServer(app);
 const io=new Server(http,{cors:{origin,methods:["GET","POST"]}});
-type SocketData={roomCode:string;playerId?:string;shared:boolean};
 
 io.use((socket,next)=>{
   const auth=socket.handshake.auth as {roomCode?:string;playerId?:string;token?:string;shared?:boolean};
@@ -103,4 +126,4 @@ function scheduleTimer(room:Room){
   room.timerHandle=setTimeout(()=>{const current=store.get(room.code);if(!current||current.state.timer?.id!==timer.id||current.state.timer.expiresAt!==timer.expiresAt)return;current.state=current.engine.handleTimerExpired(current.state,timer.id).state;publish(current);},delay);
 }
 
-http.listen(port,()=>console.log(JSON.stringify({level:"info",message:"Rickie server listening",port})));
+if (process.argv[1]&&resolve(process.argv[1])===modulePath) http.listen(port,()=>console.log(JSON.stringify({level:"info",message:"Rickie server listening",port})));

@@ -22,6 +22,26 @@ npm run lint
 npm test
 ```
 
+## Publicar no Render
+
+Crie um **Web Service** apontando para a raiz do repositorio e use:
+
+```bash
+# Root Directory
+# deixe vazio
+
+# Build Command
+npm install && npm run build
+
+# Start Command
+npm run start -w @rickie/server
+```
+
+O servidor Express usa `PORT` do Render, mantem `/api`, `/health` e Socket.IO no
+mesmo dominio, e em producao serve o build estatico de `apps/web/dist` com
+fallback para as rotas do React. Configure `WEB_ORIGIN` com a URL publica do
+servico Render depois do primeiro deploy.
+
 `docker compose up -d` sobe PostgreSQL e Redis para o trabalho de persistência; o sistema atual ainda usa estado em memória e, portanto, não sobrevive a reinício do servidor. Para regenerar as páginas PNG dos PDFs, configure `RICKIE_PDFTOPPM` com o executável Poppler quando ele não estiver no PATH e rode `node scripts/import-humanity-cards.mjs`.
 
 Consulte `docs/game-engine-contract.md`, `docs/architecture.md` e `AGENTS.md` antes de alterar uma engine.
