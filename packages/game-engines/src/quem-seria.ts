@@ -56,7 +56,7 @@ export class QuemSeriaEngine implements GameEngine<QuemSeriaState,QuemSeriaComma
     if (!actor) return {ok:false,code:"ACTOR_UNKNOWN"};
     if (command.type==="ACKNOWLEDGE_RULES") return {ok:true};
     if (command.type==="START_GAME") return state.phase==="RULES"&&actor.role==="HOST"&&Boolean(state.rulesAcknowledged[actor.id])?{ok:true}:{ok:false,code:"START_FORBIDDEN"};
-    if (command.type==="END_GAME") return actor.role==="HOST"&&state.phase!=="CANCELLED"?{ok:true}:{ok:false,code:"END_FORBIDDEN"};
+    if (command.type==="END_GAME") return actor.role==="HOST"?{ok:true}:{ok:false,code:"END_FORBIDDEN"};
     if (command.type==="NEXT_ROUND") return state.phase==="ROUND_RESULTS"&&actor.role==="HOST"?{ok:true}:{ok:false,code:"NEXT_ROUND_FORBIDDEN"};
     if (command.type==="CLOSE_ROUND") return state.phase==="INPUT_OPEN"&&actor.role==="HOST"?{ok:true}:{ok:false,code:"CLOSE_FORBIDDEN"};
     if (command.type!=="VOTE") return {ok:false,code:"COMMAND_UNKNOWN"};

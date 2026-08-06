@@ -43,3 +43,11 @@ it("rejeita auto-voto e não repete pergunta ao avançar", () => {
   state = engine.applyCommand(state,{type:"NEXT_ROUND",actorId:"host"}).state;
   expect(state.currentCard?.id).toBe("q2");
 });
+it("treats a second host end command as idempotent", () => {
+  const engine = new QuemSeriaEngine(cards);
+  let state = engine.createInitialState({sessionId:"s",deckId:"d"},players);
+  state = engine.applyCommand(state,{type:"ACKNOWLEDGE_RULES",actorId:"host"}).state;
+  state = engine.applyCommand(state,{type:"START_GAME",actorId:"host"}).state;
+  state = engine.applyCommand(state,{type:"END_GAME",actorId:"host"}).state;
+  expect(engine.validateCommand(state,{type:"END_GAME",actorId:"host"})).toEqual({ok:true});
+});

@@ -37,3 +37,11 @@ it("consome carta ao pular, alterna a vez e não recicla o baralho", () => {
   expect(state.phase).toBe("FINISHED");
   expect(state.usedCardIds).toEqual(["c1","c2"]);
 });
+it("treats a second host end command as idempotent", () => {
+  const engine = new SeBeberEngine(cards);
+  let state = engine.createInitialState({sessionId:"s",deckId:"d"},players);
+  state = engine.applyCommand(state,{type:"ACKNOWLEDGE_RULES",actorId:"host"}).state;
+  state = engine.applyCommand(state,{type:"START_GAME",actorId:"host"}).state;
+  state = engine.applyCommand(state,{type:"END_GAME",actorId:"host"}).state;
+  expect(engine.validateCommand(state,{type:"END_GAME",actorId:"host"})).toEqual({ok:true});
+});

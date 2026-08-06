@@ -59,7 +59,7 @@ export class SeBeberEngine implements GameEngine<SeBeberState,SeBeberCommand,SeB
     if (!actor) return {ok:false,code:"ACTOR_UNKNOWN"};
     if (command.type==="ACKNOWLEDGE_RULES") return {ok:true};
     if (command.type==="START_GAME") return state.phase==="RULES"&&actor.role==="HOST"&&Boolean(state.rulesAcknowledged[actor.id])?{ok:true}:{ok:false,code:"START_FORBIDDEN"};
-    if (command.type==="END_GAME") return actor.role==="HOST"&&state.phase!=="CANCELLED"?{ok:true}:{ok:false,code:"END_FORBIDDEN"};
+    if (command.type==="END_GAME") return actor.role==="HOST"?{ok:true}:{ok:false,code:"END_FORBIDDEN"};
     if (state.phase!=="INPUT_OPEN"||state.activePlayerId!==actor.id||!actor.connected||actor.role==="SPECTATOR") return {ok:false,code:"TURN_FORBIDDEN"};
     if (command.type==="REVEAL_TURN_CARD") return state.cardRevealed?{ok:false,code:"CARD_ALREADY_REVEALED"}:{ok:true};
     if (command.type==="COMPLETE_TURN"||command.type==="SKIP_TURN_CARD") return {ok:true};
