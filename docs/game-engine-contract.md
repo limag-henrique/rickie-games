@@ -24,3 +24,18 @@ Espectadores não recebem alvos e não podem enviar voto.
 
 Todas as futuras engines devem declarar política de entrada tardia, tratamento de
 saída, timer, projeções, serialização e idempotência antes de terem UI.
+## Engines de jogos importados
+
+As três engines adicionais usam `RULES` antes de `INPUT_OPEN`. Cada jogador confirma as instruções com `ACKNOWLEDGE_RULES`; o host também precisa confirmar antes de `START_GAME`. O servidor mantém `commandId`/`expectedVersion` e não publica dados privados.
+
+### Quem seria
+
+Perguntas avançam por cursor e não retornam. Jogadores confirmados escolhem um alvo diferente de si; `CLOSE_ROUND` bloqueia e revela votos uma única vez. `getPrivateView` contém somente alvos permitidos e o estado do próprio voto.
+
+### Se beber, Não Jogue
+
+Cada carta é consumida ao abrir a vez, inclusive quando o jogador pula. A carta fica somente na projeção privada do jogador ativo até `REVEAL_TURN_CARD`; depois fica pública para a roda. `COMPLETE_TURN` avança a ordem dos participantes e o baralho termina em `FINISHED`, sem reciclagem.
+
+### Cartas contra a humanidade
+
+O servidor distribui até 10 cartas brancas por jogador. A carta preta atual é pública e contém `requiredWhiteCards` (1, 2 ou 3). O juiz não pode submeter; submissões são identificadas internamente e apresentadas ao juiz apenas por IDs anônimos. `CHOOSE_WINNER` pontua uma vez, revela a combinação e torna o vencedor o juiz da próxima rodada; as mãos são repostas com cartas ainda não distribuídas. As projeções públicas nunca incluem mãos, autoria de submissões antes do resultado ou a carta privada da vez.
