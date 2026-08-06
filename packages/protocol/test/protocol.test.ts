@@ -16,4 +16,5 @@ it("accepts an anonymous submission vote", () => {
   const command = {type:"VOTE_SUBMISSION",commandId:"00000000-0000-4000-8000-000000000001",expectedVersion:3,submissionId:"submission-1"};
   expect(commandSchema.parse(command).type).toBe("VOTE_SUBMISSION");
   expect(commandSchema.safeParse({...command,submissionId:""}).success).toBe(false);
+  expect(commandSchema.safeParse({type:"CLOSE_SUBMISSIONS",commandId:"00000000-0000-4000-8000-000000000002",expectedVersion:3}).success).toBe(false);
 });

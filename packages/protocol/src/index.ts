@@ -14,7 +14,6 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type:z.literal("COMPLETE_TURN"), ...commandBase }),
   z.object({ type:z.literal("SKIP_TURN_CARD"), ...commandBase }),
   z.object({ type:z.literal("PLAY_WHITE_CARDS"), ...commandBase, cardIds:z.array(z.string().min(1)).min(1).max(3) }),
-  z.object({ type:z.literal("CLOSE_SUBMISSIONS"), ...commandBase }),
   z.object({ type:z.literal("VOTE_SUBMISSION"), ...commandBase, submissionId:z.string().min(1) }),
   z.object({ type:z.literal("START"), ...commandBase }),
   z.object({ type:z.literal("VOTE"), ...commandBase, targetId:z.string().min(1) }),

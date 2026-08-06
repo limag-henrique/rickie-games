@@ -18,14 +18,15 @@ atualizada. Toda mensagem declara `protocolVersion: "1"` quando aplicável.
 `CARTAS_CONTRA_HUMANIDADE`) e `GET /api/games` retorna títulos, resumos e
 instruções.
 
-Comandos comuns são `ACKNOWLEDGE_RULES`, `START_GAME`, `END_GAME` e
-`CHANGE_GAME`. Os comandos de jogo são `VOTE`/`CLOSE_ROUND`,
+Comandos comuns são `ACKNOWLEDGE_RULES`, `START_GAME`, `END_GAME`,
+`CHANGE_GAME` e `NEXT_ROUND`. Os comandos de jogo são `VOTE`/`CLOSE_ROUND`,
 `REVEAL_TURN_CARD`/`COMPLETE_TURN`/`SKIP_TURN_CARD` e
-`PLAY_WHITE_CARDS`/`CLOSE_SUBMISSIONS`/`VOTE_SUBMISSION`.
+`PLAY_WHITE_CARDS`/`VOTE_SUBMISSION`.
 
 `public:update` inclui somente a projeção pública do jogo atual. `private:update`
-é enviado na sala privada do jogador; mãos brancas, cartas não reveladas e
-autoria de submissões nunca são enviados para outros participantes ou para a
-tela compartilhada. Durante a votação de Cartas contra a humanidade,
-`private:update` pode conter as combinações anônimas e o estado do voto do
-próprio jogador, mas nunca a autoria ou o destino de votos individuais.
+é enviado apenas na sala privada do jogador destinatário; em Cartas contra a
+humanidade isso inclui a mão branca somente do próprio jogador. Durante a fase
+interna `HOST_REVIEW`, o servidor distribui as combinações anônimas para todos
+os votantes elegíveis, junto com o estado do voto do próprio jogador, mas nunca
+autoria de submissões, destino de votos individuais ou dados privados de outro
+participante. A tela compartilhada nunca recebe `private:update`.

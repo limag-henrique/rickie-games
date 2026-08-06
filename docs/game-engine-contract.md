@@ -37,14 +37,26 @@ baralho termina em `FINISHED`, sem reciclagem.
 
 ### Cartas contra a humanidade
 
-O servidor distribui até 10 cartas brancas por jogador a partir de um baralho
-global, sem repetir IDs entre mãos ou devolver cartas consumidas. A carta preta
-atual é pública e contém `requiredWhiteCards` (1, 2 ou 3). O juiz não submete
-cartas, mas participa da votação. Após `CLOSE_SUBMISSIONS`, todos os jogadores
-elegíveis recebem as combinações por IDs anônimos em sua projeção privada e
-enviam um `VOTE_SUBMISSION` único. A combinação mais votada vence; empates
-usam a ordem anônima. O autor ganha um ponto e vira o juiz da próxima rodada.
+`START_GAME` abre diretamente `INPUT_OPEN`: o `HOST` administra a partida, mas
+não recebe cartas brancas nem submete combinações. Cada `PLAYER` recebe até 10
+cartas brancas privadas a partir de um baralho global, sem repetir IDs entre
+mãos ou devolver cartas consumidas. A carta preta atual é pública e contém
+`requiredWhiteCards` (1, 2 ou 3).
+
+Quando todos os `PLAYER` elegíveis enviam `PLAY_WHITE_CARDS`, a engine fecha as
+submissões automaticamente e muda para `HOST_REVIEW`. Essa fase é a etapa
+interna de votação da rodada, não uma permissão exclusiva do host. Todo membro
+elegível conectado e com regras confirmadas, inclusive o `HOST`, recebe as
+combinações por IDs anônimos em sua projeção privada e envia um
+`VOTE_SUBMISSION` único. Quando todos os votos elegíveis chegam, a rodada fecha
+automaticamente em `ROUND_RESULTS`.
+
+A combinação mais votada vence; empates usam a ordem anônima da rodada. O autor
+da combinação vencedora ganha um ponto. `NEXT_ROUND` continua restrito ao
+`HOST`, apenas para abrir a rodada seguinte ou finalizar quando o baralho preto
+acabar.
 
 As projeções públicas nunca incluem mãos, autoria de submissões antes do
-resultado ou votos individuais. A combinação vencedora só é revelada em
+resultado ou votos individuais. `playerId` das submissões e `submissionVotes`
+ficam apenas no estado interno. A combinação vencedora só é revelada em
 `ROUND_RESULTS`.

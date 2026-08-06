@@ -10,6 +10,7 @@ import { Server } from "socket.io";
 import { commandSchema, createRoomSchema, joinRoomSchema, PROTOCOL_VERSION } from "@rickie/protocol";
 import { RoomStore, type Room } from "./room-store.js";
 import { gameCatalog } from "./game-catalog.js";
+import { applyClientCommand } from "./command-handler.js";
 
 type AppOptions={origin?:string;store?:RoomStore;webDistPath?:string};
 type SocketData={roomCode:string;playerId?:string;shared:boolean};
@@ -88,16 +89,25 @@ io.on("connection",socket=>{
     if (!data.playerId) return ack({ok:false,error:"SHARED_SCREEN_READ_ONLY"});
     const parsed=commandSchema.safeParse(raw); if (!parsed.success) return ack({ok:false,error:"INVALID_COMMAND"});
     const command=parsed.data;
-    const known=room.seenCommands.get(command.commandId); if (known!==undefined) return ack({ok:true,idempotent:true,version:known});
-    if (command.expectedVersion!==room.state.version) return ack({ok:false,error:"VERSION_CONFLICT",version:room.state.version});
-    try {
-      if (command.type==="CHANGE_GAME") store.changeGame(room,command.gameId,data.playerId);
-      else {
-        const engineCommand=toEngineCommand(command,data.playerId);
-        room.state=room.engine.applyCommand(room.state,engineCommand).state;
+    if (command.type==="CHANGE_GAME") {
+      const known=room.seenCommands.get(command.commandId); if (known!==undefined) return ack({ok:true,idempotent:true,version:known});
+      if (command.expectedVersion!==room.state.version) return ack({ok:false,error:"VERSION_CONFLICT",version:room.state.version});
+      try {
+        store.changeGame(room,command.gameId,data.playerId);
+        room.seenCommands.set(command.commandId,room.state.version);
+        scheduleTimer(room);
+        publish(room);
+        return ack({ok:true,version:room.state.version});
+      } catch(error) {
+        return ack({ok:false,error:error instanceof Error?error.message:"COMMAND_REJECTED",version:room.state.version});
       }
-      room.seenCommands.set(command.commandId,room.state.version); scheduleTimer(room); publish(room); ack({ok:true,version:room.state.version});
-    } catch(error) { ack({ok:false,error:error instanceof Error?error.message:"COMMAND_REJECTED",version:room.state.version}); }
+    }
+
+    const result=applyClientCommand(room,command,data.playerId);
+    if (!result.ok) return ack(result);
+    scheduleTimer(room);
+    publish(room);
+    ack(result);
   });
   socket.on("disconnect",()=>{
     if (!data.playerId) return;
@@ -106,12 +116,6 @@ io.on("connection",socket=>{
   });
 });
 
-function toEngineCommand(command:Record<string,unknown>,actorId:string):Record<string,unknown> {
-  const type=command.type==="START"?"START_GAME":command.type==="CLOSE_VOTING"?"CLOSE_ROUND":command.type==="SKIP_CARD"||command.type==="REMOVE_CARD"?"SKIP_TURN_CARD":command.type;
-  const payload={...command};
-  delete payload.type; delete payload.commandId; delete payload.expectedVersion;
-  return {...payload,type,actorId};
-}
 function gameInfo(room:Room){const game=gameCatalog.get(room.gameId);return {id:game.id,title:game.title,summary:game.summary,instructions:game.instructions};}
 function sendSnapshot(room:Room,socket:{emit:(event:string,payload:unknown)=>void},playerId?:string){socket.emit("snapshot",{protocolVersion:PROTOCOL_VERSION,room:{code:room.code,name:room.name,gameId:room.gameId,game:gameInfo(room)},public:room.engine.getPublicView(room.state),private:playerId?room.engine.getPrivateView(room.state,playerId):undefined,serverTime:new Date().toISOString()});}
 function publish(room:Room){
