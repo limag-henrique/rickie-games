@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { io, type Socket } from "socket.io-client";
 import QRCode from "qrcode";
 import { GAME_OPTIONS, type GameId, type GameInfo } from "./game-copy";
+import { getApiBaseUrl } from "./api-base";
 
-const api=import.meta.env.VITE_API_URL??"http://localhost:3001";
+const api=getApiBaseUrl({apiUrl:import.meta.env.VITE_API_URL,isDevelopment:import.meta.env.DEV});
 type Player={id:string;nickname:string;score:number;connected:boolean;role:"HOST"|"PLAYER"|"SPECTATOR"};
 type ImageCard={id:string;gameId:"CARTAS_CONTRA_HUMANIDADE";kind:"BLACK"|"WHITE";page:number;row:number;column:number;imageUrl:string;requiredWhiteCards?:1|2|3};
 type TextCard={id:string;category:string;text:string};

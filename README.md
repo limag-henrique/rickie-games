@@ -40,7 +40,9 @@ npm run start -w @rickie/server
 O servidor Express usa `PORT` do Render, mantem `/api`, `/health` e Socket.IO no
 mesmo dominio, e em producao serve o build estatico de `apps/web/dist` com
 fallback para as rotas do React. Configure `WEB_ORIGIN` com a URL publica do
-servico Render depois do primeiro deploy.
+servico Render depois do primeiro deploy. `VITE_API_URL` e opcional nesse
+modelo: sem ela, o web usa o mesmo dominio; defina-a somente quando o web e a
+API estiverem em servicos separados.
 
 `docker compose up -d` sobe PostgreSQL e Redis para o trabalho de persistência; o sistema atual ainda usa estado em memória e, portanto, não sobrevive a reinício do servidor. Para regenerar as páginas PNG dos PDFs, configure `RICKIE_PDFTOPPM` com o executável Poppler quando ele não estiver no PATH e rode `node scripts/import-humanity-cards.mjs`.
 
