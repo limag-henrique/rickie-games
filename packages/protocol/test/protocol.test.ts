@@ -2,14 +2,24 @@ import { expect, it } from "vitest";
 import { commandSchema, createRoomSchema } from "../src/index.js";
 
 it("accepts room creation with a selected game", () => {
-  expect(createRoomSchema.parse({gameId:"QUEM_SERIA",roomName:"Noite",hostNickname:"Ana"}).gameId).toBe("QUEM_SERIA");
+  const room = createRoomSchema.parse({gameId:"QUEM_SERIA",roomName:"Noite",creatorNickname:"Ana"});
+  expect(room).toEqual({gameId:"QUEM_SERIA",roomName:"Noite",creatorNickname:"Ana"});
+  expect(createRoomSchema.safeParse({gameId:"QUEM_SERIA",roomName:"Noite",hostNickname:"Ana"}).success).toBe(false);
 });
 
 it("accepts versioned common commands", () => {
-  for (const type of ["ACKNOWLEDGE_RULES", "START_GAME", "END_GAME", "CHANGE_GAME"] as const) {
+  for (const type of ["ACKNOWLEDGE_RULES", "START_GAME", "END_GAME", "CHANGE_GAME", "LEAVE_ROOM"] as const) {
     const command = {type,commandId:"00000000-0000-4000-8000-000000000001",expectedVersion:0,...(type === "CHANGE_GAME" ? {gameId:"SE_BEBER"} : {})};
     expect(commandSchema.parse(command).type).toBe(type);
   }
+});
+
+it("does not accept the removed public reveal command", () => {
+  expect(commandSchema.safeParse({
+    type:"REVEAL_TURN_CARD",
+    commandId:"00000000-0000-4000-8000-000000000001",
+    expectedVersion:0
+  }).success).toBe(false);
 });
 
 it("accepts an anonymous submission vote", () => {

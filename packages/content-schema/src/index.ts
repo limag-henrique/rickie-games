@@ -17,4 +17,4 @@ export const contentPackSchema = z.object({
 export type VotingCard = z.infer<typeof cardSchema>;
 export type ContentPack = z.infer<typeof contentPackSchema>;
 export { quemSeriaCards, seBeberCards } from "./imported-content.js";
-export { createHumanityManifest, importTextDeck } from "./importers.js";
+export { createHumanityManifest, importTextDeck, inferCardIntensity, type CardIntensity } from "./importers.js";

@@ -19,7 +19,9 @@ export function applyClientCommand(
   }
 
   try {
-    if (command.type==="CHANGE_GAME") throw new Error("CHANGE_GAME_REQUIRES_ROOM_STORE");
+    if (command.type==="CHANGE_GAME"||command.type==="LEAVE_ROOM"||command.type==="END_GAME") {
+      throw new Error(`${command.type}_REQUIRES_ROOM_STORE`);
+    }
     const engineCommand=toEngineCommand(command,actorId);
     room.state=room.engine.applyCommand(room.state,engineCommand).state;
     room.seenCommands.set(command.commandId,room.state.version);

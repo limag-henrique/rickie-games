@@ -35,14 +35,14 @@ export function createApp(options:AppOptions={}) {
   app.post("/api/rooms",(req,res)=>{
     const parsed=createRoomSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({error:"INVALID_INPUT",details:parsed.error.flatten()});
-    const {room,credential}=store.create(parsed.data.roomName,parsed.data.hostNickname,parsed.data.gameId,parsed.data.timerSeconds);
+    const {room,credential}=store.create(parsed.data.roomName,parsed.data.creatorNickname,parsed.data.gameId,parsed.data.timerSeconds);
     const game=gameCatalog.get(room.gameId);
-    res.status(201).json({code:room.code,gameId:room.gameId,game:{id:game.id,title:game.title,summary:game.summary,instructions:game.instructions},playerId:credential.playerId,token:credential.token,sharedUrl:`${origin}/shared/${room.code}`,joinUrl:`${origin}/room/${room.code}`});
+    res.status(201).json({code:room.code,gameId:room.gameId,creatorPlayerId:room.creatorPlayerId,game:{id:game.id,title:game.title,summary:game.summary,instructions:game.instructions},playerId:credential.playerId,token:credential.token,sharedUrl:`${origin}/shared/${room.code}`,joinUrl:`${origin}/room/${room.code}`});
   });
   app.get("/api/rooms/:code",(req,res)=>{
     const room=store.get(req.params.code); if (!room) return res.status(404).json({error:"ROOM_NOT_FOUND"});
     const game=gameCatalog.get(room.gameId);
-    res.json({code:room.code,name:room.name,gameId:room.gameId,game:{id:game.id,title:game.title,summary:game.summary,instructions:game.instructions},phase:room.state.phase,players:room.engine.getPublicView(room.state).players});
+    res.json({code:room.code,name:room.name,gameId:room.gameId,creatorPlayerId:room.creatorPlayerId,champions:championsView(room),game:{id:game.id,title:game.title,summary:game.summary,instructions:game.instructions},phase:room.state.phase,players:room.engine.getPublicView(room.state).players});
   });
   app.post("/api/rooms/:code/join",(req,res)=>{
     const room=store.get(req.params.code); if (!room) return res.status(404).json({error:"ROOM_NOT_FOUND"});
@@ -89,15 +89,30 @@ io.on("connection",socket=>{
     if (!data.playerId) return ack({ok:false,error:"SHARED_SCREEN_READ_ONLY"});
     const parsed=commandSchema.safeParse(raw); if (!parsed.success) return ack({ok:false,error:"INVALID_COMMAND"});
     const command=parsed.data;
-    if (command.type==="CHANGE_GAME") {
+    if (command.type==="CHANGE_GAME"||command.type==="LEAVE_ROOM"||command.type==="END_GAME") {
       const known=room.seenCommands.get(command.commandId); if (known!==undefined) return ack({ok:true,idempotent:true,version:known});
       if (command.expectedVersion!==room.state.version) return ack({ok:false,error:"VERSION_CONFLICT",version:room.state.version});
       try {
-        store.changeGame(room,command.gameId,data.playerId);
-        room.seenCommands.set(command.commandId,room.state.version);
-        scheduleTimer(room);
-        publish(room);
-        return ack({ok:true,version:room.state.version});
+        if (command.type==="CHANGE_GAME") {
+          store.changeGame(room,command.gameId,data.playerId);
+          room.seenCommands.set(command.commandId,room.state.version);
+          scheduleTimer(room);
+          publish(room);
+          return ack({ok:true,version:room.state.version});
+        }
+        const version=room.state.version;
+        const roomClosed=command.type==="END_GAME"
+          ? (store.end(room,data.playerId),true)
+          : store.leave(room,data.playerId).roomClosed;
+        ack({ok:true,version});
+        if (roomClosed) {
+          io.to(`room:${room.code}`).emit("room:closed",{reason:"ROOM_ENDED"});
+          io.in(`room:${room.code}`).disconnectSockets(true);
+        } else {
+          publish(room);
+          socket.disconnect(true);
+        }
+        return;
       } catch(error) {
         return ack({ok:false,error:error instanceof Error?error.message:"COMMAND_REJECTED",version:room.state.version});
       }
@@ -105,6 +120,7 @@ io.on("connection",socket=>{
 
     const result=applyClientCommand(room,command,data.playerId);
     if (!result.ok) return ack(result);
+    if (room.engine.isFinished(room.state)) store.settleCurrentGame(room);
     scheduleTimer(room);
     publish(room);
     ack(result);
@@ -112,22 +128,24 @@ io.on("connection",socket=>{
   socket.on("disconnect",()=>{
     if (!data.playerId) return;
     const current=store.get(data.roomCode);
-    if (current) { current.state=current.engine.handlePlayerDisconnect(current.state,data.playerId).state; publish(current); }
+    const player=current?.state.players.find((candidate:{id:string;left?:boolean;connected:boolean})=>candidate.id===data.playerId);
+    if (current&&player&&!player.left&&player.connected) { current.state=current.engine.handlePlayerDisconnect(current.state,data.playerId).state; publish(current); }
   });
 });
 
 function gameInfo(room:Room){const game=gameCatalog.get(room.gameId);return {id:game.id,title:game.title,summary:game.summary,instructions:game.instructions};}
-function sendSnapshot(room:Room,socket:{emit:(event:string,payload:unknown)=>void},playerId?:string){socket.emit("snapshot",{protocolVersion:PROTOCOL_VERSION,room:{code:room.code,name:room.name,gameId:room.gameId,game:gameInfo(room)},public:room.engine.getPublicView(room.state),private:playerId?room.engine.getPrivateView(room.state,playerId):undefined,serverTime:new Date().toISOString()});}
+function championsView(room:Room){return room.champions.map(record=>{const player=room.state.players.find((candidate:{id:string;left?:boolean})=>candidate.id===record.playerId);return {...record,left:player?Boolean(player.left):true};});}
+function roomInfo(room:Room){return {code:room.code,name:room.name,gameId:room.gameId,creatorPlayerId:room.creatorPlayerId,champions:championsView(room),game:gameInfo(room)};}
+function sendSnapshot(room:Room,socket:{emit:(event:string,payload:unknown)=>void},playerId?:string){socket.emit("snapshot",{protocolVersion:PROTOCOL_VERSION,room:roomInfo(room),public:room.engine.getPublicView(room.state),private:playerId?room.engine.getPrivateView(room.state,playerId):undefined,serverTime:new Date().toISOString()});}
 function publish(room:Room){
-  const game=gameInfo(room);
-  io.to(`room:${room.code}`).emit("public:update",{protocolVersion:PROTOCOL_VERSION,room:{code:room.code,name:room.name,gameId:room.gameId,game},public:room.engine.getPublicView(room.state),serverTime:new Date().toISOString()});
-  for (const player of room.state.players) io.to(`player:${player.id}`).emit("private:update",room.engine.getPrivateView(room.state,player.id));
+  io.to(`room:${room.code}`).emit("public:update",{protocolVersion:PROTOCOL_VERSION,room:roomInfo(room),public:room.engine.getPublicView(room.state),serverTime:new Date().toISOString()});
+  for (const player of room.state.players) if (!player.left) io.to(`player:${player.id}`).emit("private:update",room.engine.getPrivateView(room.state,player.id));
 }
 function scheduleTimer(room:Room){
   if (room.timerHandle) clearTimeout(room.timerHandle);
   const timer=room.state.timer; if (!timer) return;
   const delay=Math.max(0,Date.parse(timer.expiresAt)-Date.now());
-  room.timerHandle=setTimeout(()=>{const current=store.get(room.code);if(!current||current.state.timer?.id!==timer.id||current.state.timer.expiresAt!==timer.expiresAt)return;current.state=current.engine.handleTimerExpired(current.state,timer.id).state;publish(current);},delay);
+  room.timerHandle=setTimeout(()=>{const current=store.get(room.code);if(!current||current.state.timer?.id!==timer.id||current.state.timer.expiresAt!==timer.expiresAt)return;current.state=current.engine.handleTimerExpired(current.state,timer.id).state;if(current.engine.isFinished(current.state))store.settleCurrentGame(current);publish(current);},delay);
 }
 
 if (process.argv[1]&&resolve(process.argv[1])===modulePath) http.listen(port,()=>console.log(JSON.stringify({level:"info",message:"Rickie server listening",port})));

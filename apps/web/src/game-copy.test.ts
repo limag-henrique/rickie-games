@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { GAME_OPTIONS } from "./game-copy";
+import { GAME_OPTIONS, humanityResultTitle } from "./game-copy";
 
 it("oferece exatamente os três jogos com instruções objetivas", () => {
   expect(GAME_OPTIONS.map((game) => game.id)).toEqual([
@@ -14,9 +14,17 @@ it("oferece exatamente os três jogos com instruções objetivas", () => {
   ).toBe(true);
 });
 
-it("descreve Cartas contra a humanidade no fluxo sem juiz", () => {
+it("descreve todos os jogos sem perfil administrativo ou revelação pública", () => {
   const humanity = GAME_OPTIONS.find((game) => game.id === "CARTAS_CONTRA_HUMANIDADE");
-  expect(humanity?.instructions).toContain("todos os jogadores respondem");
-  expect(humanity?.instructions).toContain("todos os membros votam");
-  expect(humanity?.instructions).toMatch(/host n.o joga/i);
+  const drink = GAME_OPTIONS.find((game) => game.id === "SE_BEBER");
+  expect(humanity?.instructions).toMatch(/todos recebem/i);
+  expect(humanity?.instructions).toMatch(/todos votam/i);
+  expect(GAME_OPTIONS.map(game=>game.instructions).join(" ")).not.toMatch(/host|administrador/i);
+  expect(drink?.instructions).toMatch(/somente para você/i);
+  expect(drink?.instructions).not.toMatch(/mostrar|revelar/i);
+});
+
+it("returns the exact Humanity tie message",()=>{
+  expect(humanityResultTitle(true,["Ana","Bia"])).toBe("Uai, deu empate!");
+  expect(humanityResultTitle(false,["Ana"])).toBe("Ana venceu a rodada");
 });

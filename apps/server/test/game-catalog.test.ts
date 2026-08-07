@@ -14,11 +14,11 @@ it("expõe exatamente os três jogos com instruções", () => {
   expect(games.every((game) => game.title && game.summary && game.instructions)).toBe(true);
 });
 
-it("descreve Cartas contra a humanidade no fluxo sem juiz", () => {
+it("descreve Cartas contra a humanidade com todos competindo", () => {
   const humanity = gameCatalog.get("CARTAS_CONTRA_HUMANIDADE");
-  expect(humanity.instructions).toContain("todos os jogadores respondem");
-  expect(humanity.instructions).toContain("todos os membros votam");
-  expect(humanity.instructions).toMatch(/host n.o joga/i);
+  expect(humanity.instructions).toMatch(/todos recebem/i);
+  expect(humanity.instructions).toMatch(/todos votam/i);
+  expect(humanity.instructions).not.toMatch(/host|administrador/i);
 });
 
 it("mantém o manifesto visual completo e as páginas geradas", () => {

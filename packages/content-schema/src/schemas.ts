@@ -8,7 +8,8 @@ export const textCardSchema = z.object({
   gameId:gameIdSchema,
   category:z.string().min(1),
   text:z.string().min(1),
-  sourceFile:z.string().min(1)
+  sourceFile:z.string().min(1),
+  intensity:z.enum(["LIGHT","MODERATE","HEAVY"]).optional()
 });
 
 export const imageCardSchema = z.object({
