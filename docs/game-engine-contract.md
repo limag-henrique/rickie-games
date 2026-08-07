@@ -43,6 +43,11 @@ cartas brancas privadas a partir de um baralho global, sem repetir IDs entre
 mãos ou devolver cartas consumidas. A carta preta atual é pública e contém
 `requiredWhiteCards` (1, 2 ou 3).
 
+No conteúdo auditado, `CAH_BLACK_076` a `CAH_BLACK_084`, `CAH_BLACK_096` e
+`CAH_BLACK_098` exigem duas cartas; `CAH_BLACK_085` e `CAH_BLACK_086` exigem
+três. A ordem de `cardIds` em `PLAY_WHITE_CARDS` é semântica: a engine a
+preserva nas combinações anônimas da votação e no resultado vencedor.
+
 Quando todos os `PLAYER` elegíveis enviam `PLAY_WHITE_CARDS`, a engine fecha as
 submissões automaticamente e muda para `HOST_REVIEW`. Essa fase é a etapa
 interna de votação da rodada, não uma permissão exclusiva do host. Todo membro

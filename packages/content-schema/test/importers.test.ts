@@ -21,6 +21,27 @@ it("gera IDs estáveis e manifesto completo de Cartas contra a humanidade", () =
   expect(first.white).toHaveLength(546);
   expect(first).toEqual(second);
   expect(first.black.every(card => [1, 2, 3].includes(card.requiredWhiteCards ?? 1))).toBe(true);
+
+  expect(first.black
+    .filter(card => card.requiredWhiteCards === 2)
+    .map(card => card.id)
+  ).toEqual([
+    "CAH_BLACK_076",
+    "CAH_BLACK_077",
+    "CAH_BLACK_078",
+    "CAH_BLACK_079",
+    "CAH_BLACK_080",
+    "CAH_BLACK_081",
+    "CAH_BLACK_082",
+    "CAH_BLACK_083",
+    "CAH_BLACK_084",
+    "CAH_BLACK_096",
+    "CAH_BLACK_098"
+  ]);
+  expect(first.black
+    .filter(card => card.requiredWhiteCards === 3)
+    .map(card => card.id)
+  ).toEqual(["CAH_BLACK_085", "CAH_BLACK_086"]);
 });
 
 it("importa todos os cards dos dois arquivos locais", () => {

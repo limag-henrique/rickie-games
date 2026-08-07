@@ -120,6 +120,38 @@ it("opens HOST_REVIEW automatically after the last required white card without C
   expect(state.hands.caio).not.toEqual(expect.arrayContaining(caioCards));
 });
 
+it("preserves the chosen card order through anonymous voting and the winning result", () => {
+  const engine = createEngine();
+  let state = startGame(engine);
+  const biaCards = [state.hands.bia[1], state.hands.bia[0]];
+  const caioCards = state.hands.caio.slice(0, 2);
+
+  state = engine.applyCommand(state, {
+    type:"PLAY_WHITE_CARDS",
+    actorId:"bia",
+    cardIds:biaCards
+  }).state;
+  state = engine.applyCommand(state, {
+    type:"PLAY_WHITE_CARDS",
+    actorId:"caio",
+    cardIds:caioCards
+  }).state;
+
+  const biaSubmissionId = state.anonymousSubmissionOrder[0];
+  const hostSubmissions = engine.getPrivateView(state, "host").submissions ?? [];
+  expect(hostSubmissions[0]?.cards.map(card => card.id)).toEqual(biaCards);
+
+  for (const actorId of ["host", "bia", "caio"]) {
+    state = engine.applyCommand(state, {
+      type:"VOTE_SUBMISSION",
+      actorId,
+      submissionId:biaSubmissionId
+    }).state;
+  }
+
+  expect(engine.getPublicView(state).winningCards?.map(card => card.id)).toEqual(biaCards);
+});
+
 it("shows anonymous submissions to every voting player and resolves the round when all members vote", () => {
   const engine = createEngine();
   let state = startGame(engine);
