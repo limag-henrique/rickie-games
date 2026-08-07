@@ -288,4 +288,3 @@ devem comprovar:
 Antes da conclusão serão executados `npm run build`, `npm run typecheck`,
 `npm run lint` e `npm test`, além de uma busca por vazamento de campos privados
 e referências residuais a `HOST`, “host” ou “administrador”.
-
