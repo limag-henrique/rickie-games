@@ -2,6 +2,25 @@ import { imageCardSchema, type GameId, type ImageCard, textCardSchema, type Text
 
 const slug = (value:string):string => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "");
 
+export type CardIntensity = "LIGHT" | "MODERATE" | "HEAVY";
+
+export function inferCardIntensity(category:string,text:string):CardIntensity {
+  const normalized = `${category} ${text}`.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const drinkAmount = normalized.match(/\b(\d+)\s*goles?\b/);
+  if (drinkAmount) {
+    const amount=Number(drinkAmount[1]);
+    return amount>=3?"HEAVY":amount===2?"MODERATE":"LIGHT";
+  }
+  const duration = normalized.match(/\b(\d+)\s*segundos?\b/);
+  if (duration) {
+    const seconds=Number(duration[1]);
+    return seconds>30?"HEAVY":seconds>10?"MODERATE":"LIGHT";
+  }
+  if (/segredo|fantasia|galeria|whatsapp|ligacao|trote/.test(normalized)) return "HEAVY";
+  if (/perguntas?|desafios?/.test(normalized)) return "MODERATE";
+  return "LIGHT";
+}
+
 export function importTextDeck(raw:string, gameId:GameId, sourceFile:string):TextCard[] {
   const cards:TextCard[] = [];
   let category = gameId === "QUEM_SERIA" ? "Perguntas" : "Geral";
@@ -15,7 +34,10 @@ export function importTextDeck(raw:string, gameId:GameId, sourceFile:string):Tex
     }
     if (trimmed.startsWith("#")) continue;
     const id = `${gameId}_${slug(category)}_${cards.length + 1}`;
-    cards.push(textCardSchema.parse({id,gameId,category,text:trimmed,sourceFile}));
+    cards.push(textCardSchema.parse({
+      id,gameId,category,text:trimmed,sourceFile,
+      ...(gameId==="SE_BEBER"?{intensity:inferCardIntensity(category,trimmed)}:{})
+    }));
   }
   return cards;
 }

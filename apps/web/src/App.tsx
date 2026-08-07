@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { io, type Socket } from "socket.io-client";
 import QRCode from "qrcode";
-import { GAME_OPTIONS, type GameId, type GameInfo } from "./game-copy";
+import { GAME_OPTIONS, humanityResultTitle, type GameId, type GameInfo } from "./game-copy";
 import { getApiBaseUrl } from "./api-base";
+import { RoomDrawer, type ChampionItem } from "./RoomDrawer";
 
 const api = getApiBaseUrl({
   apiUrl: import.meta.env.VITE_API_URL,
@@ -14,7 +15,9 @@ type Player = {
   nickname: string;
   score: number;
   connected: boolean;
-  role: "HOST" | "PLAYER" | "SPECTATOR";
+  role: "PLAYER" | "SPECTATOR";
+  left?: boolean;
+  rulesAcknowledged: boolean;
 };
 
 type ImageCard = {
@@ -43,7 +46,6 @@ type PublicView = {
   revealedVotes?: Record<string, { voter: string; target: string }>;
   activePlayerId?: string;
   activePlayerNickname?: string;
-  currentCard?: { category: string; text: string };
   usedCount?: number;
   totalCards?: number;
   currentBlackCard?: ImageCard;
@@ -51,24 +53,26 @@ type PublicView = {
   totalSubmittors?: number;
   voteCount?: number;
   totalVoters?: number;
-  winningCards?: ImageCard[];
-  winnerNickname?: string;
+  winningCombinations?: ImageCard[][];
+  winnerNicknames?: string[];
+  isTie?: boolean;
 };
 
 type PrivateView = {
   rulesAcknowledged?: boolean;
   submitted?: boolean;
   allowedTargets?: string[];
+  waitingForNextRound?: boolean;
   isActive?: boolean;
   currentCard?: TextCard;
-  cardRevealed?: boolean;
+  penaltyChallenge?: { id: string; intensity: "LIGHT" | "MODERATE" | "HEAVY"; text: string };
   hand?: ImageCard[];
   submissions?: PrivateSubmission[];
   votedSubmissionId?: string;
-  winnerCards?: ImageCard[];
+  winningCombinations?: ImageCard[][];
 };
 
-type RoomMeta = { code: string; name: string; gameId: GameId; game: GameInfo };
+type RoomMeta = { code: string; name: string; gameId: GameId; creatorPlayerId: string; champions: ChampionItem[]; game: GameInfo };
 type Snapshot = { room: RoomMeta; public: PublicView; private?: PrivateView };
 type Credential = { playerId: string; token: string };
 type CommandAck = { ok: boolean; error?: string; version?: number; idempotent?: boolean };
@@ -87,7 +91,7 @@ function Home() {
   const [selected, setSelected] = useState<GameInfo | null>(null);
   const [roomName, setRoomName] = useState("Noite da galera");
   const [nickname, setNickname] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => new URLSearchParams(location.search).get("roomClosed") ? "A sala foi encerrada." : "");
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -100,7 +104,7 @@ function Home() {
       body: JSON.stringify({
         gameId: selected.id,
         roomName,
-        hostNickname: nickname
+        creatorNickname: nickname
       })
     });
     const data = await response.json();
@@ -283,6 +287,10 @@ function Game({
     const handlePrivateUpdate = (privateView: PrivateView) => {
       setSnapshot((current) => (current ? { ...current, private: privateView } : current));
     };
+    const handleRoomClosed = () => {
+      localStorage.removeItem(key(code));
+      location.assign("/?roomClosed=1");
+    };
 
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
@@ -290,6 +298,7 @@ function Game({
     socket.on("snapshot", handleSnapshot);
     socket.on("public:update", handlePublicUpdate);
     socket.on("private:update", handlePrivateUpdate);
+    socket.on("room:closed", handleRoomClosed);
     socket.connect();
 
     return () => {
@@ -299,11 +308,12 @@ function Game({
       socket.off("snapshot", handleSnapshot);
       socket.off("public:update", handlePublicUpdate);
       socket.off("private:update", handlePrivateUpdate);
+      socket.off("room:closed", handleRoomClosed);
       socket.disconnect();
     };
   }, [socket]);
 
-  const send = (type: string, payload: Record<string, unknown> = {}) => {
+  const send = (type: string, payload: Record<string, unknown> = {}, onSuccess?: () => void) => {
     if (pendingCommand) return;
 
     setError("");
@@ -321,9 +331,8 @@ function Game({
           latestVersion.current = answer.version;
         }
         setPendingCommand(null);
-        if (!answer.ok) {
-          setError(answer.error ?? "Ação não permitida.");
-        }
+        if (!answer.ok) setError(answer.error ?? "Ação não permitida.");
+        else onSuccess?.();
       }
     );
   };
@@ -337,8 +346,7 @@ function Game({
   }
 
   const publicView = snapshot.public;
-  const me = credential && publicView.players.find((player) => player.id === credential.playerId);
-  const isHost = me?.role === "HOST";
+  const isCreator = Boolean(credential && snapshot.room.creatorPlayerId === credential.playerId);
   const acknowledged = Boolean(snapshot.private?.rulesAcknowledged);
   const game = snapshot.room.game;
 
@@ -362,7 +370,7 @@ function Game({
         <RulesPanel
           game={game}
           acknowledged={acknowledged}
-          isHost={Boolean(isHost)}
+          isCreator={isCreator}
           shared={shared}
           ackPending={pendingCommand === "ACKNOWLEDGE_RULES"}
           onAcknowledge={() => send("ACKNOWLEDGE_RULES")}
@@ -375,13 +383,37 @@ function Game({
           snapshot={snapshot}
           credential={credential}
           shared={shared}
-          isHost={Boolean(isHost)}
+          isCreator={isCreator}
           send={send}
         />
       )}
-      <LobbyTools code={code} shared={shared} isHost={Boolean(isHost)} />
-      {isHost && !shared && publicView.phase !== "CANCELLED" && <HostActions send={send} />}
-      <Scoreboard players={publicView.players} />
+      {!shared && publicView.phase !== "RULES" && !acknowledged && (
+        <LateJoinRules
+          game={game}
+          ackPending={pendingCommand === "ACKNOWLEDGE_RULES"}
+          onAcknowledge={() => send("ACKNOWLEDGE_RULES")}
+        />
+      )}
+      <LobbyTools code={code} shared={shared} isCreator={isCreator} />
+      {!shared && (
+        <RoomDrawer
+          isCreator={isCreator}
+          currentGameId={snapshot.room.gameId}
+          players={publicView.players}
+          champions={snapshot.room.champions ?? []}
+          games={GAME_OPTIONS}
+          onEnd={() => send("END_GAME", {}, () => {
+            localStorage.removeItem(key(code));
+            location.assign("/?roomClosed=1");
+          })}
+          onLeave={() => send("LEAVE_ROOM", {}, () => {
+            localStorage.removeItem(key(code));
+            location.assign("/");
+          })}
+          onChangeGame={(gameId) => send("CHANGE_GAME", { gameId })}
+        />
+      )}
+      {shared && <Scoreboard players={publicView.players} gameId={publicView.gameId} />}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -394,7 +426,7 @@ function Game({
 function RulesPanel({
   game,
   acknowledged,
-  isHost,
+  isCreator,
   shared,
   ackPending,
   onAcknowledge,
@@ -403,7 +435,7 @@ function RulesPanel({
 }: {
   game: GameInfo;
   acknowledged: boolean;
-  isHost: boolean;
+  isCreator: boolean;
   shared: boolean;
   ackPending: boolean;
   onAcknowledge: () => void;
@@ -419,8 +451,8 @@ function RulesPanel({
         {players
           .filter((player) => player.role !== "SPECTATOR")
           .map((player) => (
-            <span key={player.id} className={player.connected ? "ready" : "away"}>
-              {player.nickname}
+            <span key={player.id} className={player.rulesAcknowledged ? "ready" : "away"}>
+              {player.nickname} · {player.rulesAcknowledged ? "Entendeu" : "Aguardando"}{!player.connected ? " (ausente)" : ""}
             </span>
           ))}
       </div>
@@ -429,36 +461,52 @@ function RulesPanel({
           {ackPending ? "Confirmando..." : "Beleza, entendi"}
         </button>
       )}
-      {!shared && acknowledged && isHost && <button onClick={onStart}>Começar jogo</button>}
-      {!shared && acknowledged && !isHost && (
-        <p className="hint">Você está pronto. Aguarde o administrador começar.</p>
+      {!shared && acknowledged && isCreator && <button onClick={onStart}>Começar jogo</button>}
+      {!shared && acknowledged && !isCreator && (
+        <p className="hint">Você está pronto. Aguarde quem criou a sala começar.</p>
       )}
       {shared && <p className="hint">A tela compartilhada mostra somente o que a roda pode ver.</p>}
     </section>
   );
 }
 
+function LateJoinRules({game,ackPending,onAcknowledge}:{game:GameInfo;ackPending:boolean;onAcknowledge:()=>void}) {
+  return <section className="rules panel late-join-rules">
+    <p className="eyebrow">ENTRADA TARDIA</p>
+    <h3>{game.title}</h3>
+    <p>{game.instructions}</p>
+    <p className="hint">Confirme as regras para entrar na próxima rodada ou turno.</p>
+    <button onClick={onAcknowledge} disabled={ackPending}>{ackPending?"Confirmando...":"Beleza, entendi"}</button>
+  </section>;
+}
+
 function GameBoard({
   snapshot,
   credential,
   shared,
-  isHost,
+  isCreator,
   send
 }: {
   snapshot: Snapshot;
   credential?: Credential;
   shared: boolean;
-  isHost: boolean;
+  isCreator: boolean;
   send: (type: string, payload?: Record<string, unknown>) => void;
 }) {
   const { public: publicView } = snapshot;
+  if (!shared&&snapshot.private?.waitingForNextRound) {
+    return <section className="panel centered">
+      <h3>Você entra na próxima rodada</h3>
+      <p>As regras estão confirmadas. A rodada atual continua sem ser bloqueada.</p>
+    </section>;
+  }
   if (publicView.gameId === "QUEM_SERIA") {
     return (
       <QuemView
         publicView={publicView}
         privateView={snapshot.private}
         shared={shared}
-        isHost={isHost}
+        isCreator={isCreator}
         send={send}
       />
     );
@@ -482,7 +530,7 @@ function GameBoard({
       privateView={snapshot.private}
       credential={credential}
       shared={shared}
-      isHost={isHost}
+      isCreator={isCreator}
       send={send}
     />
   );
@@ -492,20 +540,20 @@ function QuemView({
   publicView,
   privateView,
   shared,
-  isHost,
+  isCreator,
   send
 }: {
   publicView: PublicView;
   privateView?: PrivateView;
   shared: boolean;
-  isHost: boolean;
+  isCreator: boolean;
   send: (type: string, payload?: Record<string, unknown>) => void;
 }) {
   return (
     <>
       <section className="round-head">
         <p className="eyebrow">PERGUNTA DA RODADA</p>
-        <h2>
+        <h2 className="quem-question">
           {publicView.question ??
             (publicView.phase === "FINISHED"
               ? "Todas as perguntas foram usadas."
@@ -548,15 +596,15 @@ function QuemView({
           ))}
         </section>
       )}
-      {isHost && !shared && publicView.phase === "INPUT_OPEN" && (
-        <div className="host-actions">
+      {isCreator && !shared && publicView.phase === "INPUT_OPEN" && (
+        <div className="round-actions">
           <button className="secondary" onClick={() => send("CLOSE_ROUND")}>
             Encerrar rodada
           </button>
         </div>
       )}
-      {isHost && !shared && publicView.phase === "ROUND_RESULTS" && (
-        <div className="host-actions">
+      {isCreator && !shared && publicView.phase === "ROUND_RESULTS" && (
+        <div className="round-actions">
           <button onClick={() => send("NEXT_ROUND")}>Próxima pergunta</button>
         </div>
       )}
@@ -578,6 +626,7 @@ function DrinkView({
   send: (type: string, payload?: Record<string, unknown>) => void;
 }) {
   const active = credential?.playerId === publicView.activePlayerId;
+  const privateContent=privateView?.penaltyChallenge??privateView?.currentCard;
 
   return (
     <>
@@ -586,24 +635,21 @@ function DrinkView({
         <h2>
           {publicView.phase === "FINISHED"
             ? "O baralho acabou."
-            : publicView.currentCard?.text ??
-              (active
-                ? privateView?.currentCard?.text ?? "Sua carta está pronta."
-                : "Aguarde a carta ser revelada")}
+            : active
+              ? privateContent?.text ?? "Sua carta está pronta."
+              : "A carta é privada para quem está jogando"}
         </h2>
-        {publicView.currentCard && <span className="tag">{publicView.currentCard.category}</span>}
+        {active&&privateView?.currentCard&&<span className="tag">{privateView.currentCard.category}</span>}
+        {active&&privateView?.penaltyChallenge&&<span className="tag">Desafio {privateView.penaltyChallenge.intensity.toLowerCase()}</span>}
       </section>
-      {!shared && active && privateView?.currentCard && (
-        <div className="host-actions">
-          <button onClick={() => send("REVEAL_TURN_CARD")} disabled={Boolean(privateView.cardRevealed)}>
-            Mostrar para a roda
-          </button>
+      {!shared && active && privateContent && (
+        <div className="round-actions">
           <button className="secondary" onClick={() => send("COMPLETE_TURN")}>
-            Concluir e passar
+            {privateView?.penaltyChallenge?"Cumpri o desafio e passei":"Concluir e passar"}
           </button>
-          <button className="secondary" onClick={() => send("SKIP_TURN_CARD")}>
-            Pular carta
-          </button>
+          {!privateView?.penaltyChallenge&&<button className="secondary" onClick={() => send("SKIP_TURN_CARD")}>
+            Pular carta e pagar desafio
+          </button>}
         </div>
       )}
       {!shared && !active && publicView.phase === "INPUT_OPEN" && (
@@ -645,7 +691,7 @@ function CardTile({
   );
 }
 
-function LobbyTools({ code, shared, isHost }: { code: string; shared: boolean; isHost: boolean }) {
+function LobbyTools({ code, shared, isCreator }: { code: string; shared: boolean; isCreator: boolean }) {
   const [qr, setQr] = useState("");
   const link = `${location.origin}/room/${code}`;
 
@@ -658,46 +704,23 @@ function LobbyTools({ code, shared, isHost }: { code: string; shared: boolean; i
       <p>
         Convide a roda pelo código <strong>{code}</strong>
       </p>
-      {(shared || isHost) && qr && <img className="qr" src={qr} alt={`QR code para entrar na sala ${code}`} />}
+      {(shared || isCreator) && qr && <img className="qr" src={qr} alt={`QR code para entrar na sala ${code}`} />}
       <a href={`/shared/${code}`}>Abrir tela compartilhada</a>
     </section>
   );
 }
 
-function HostActions({ send }: { send: (type: string, payload?: Record<string, unknown>) => void }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <aside className="host-actions admin">
-      <button className="secondary" onClick={() => setOpen((value) => !value)}>
-        Encerrar e trocar de jogo
-      </button>
-      {open && (
-        <div className="switcher">
-          <button className="danger" onClick={() => send("END_GAME")}>
-            Encerrar partida
-          </button>
-          {GAME_OPTIONS.map((game) => (
-            <button key={game.id} onClick={() => send("CHANGE_GAME", { gameId: game.id })}>
-              {game.title}
-            </button>
-          ))}
-        </div>
-      )}
-    </aside>
-  );
-}
-
-function Scoreboard({ players }: { players: Player[] }) {
+function Scoreboard({ players,gameId }: { players: Player[];gameId:GameId }) {
   return (
     <section className="scores">
       <h3>Placar</h3>
       {[...players]
-        .sort((a, b) => b.score - a.score)
+        .filter((player)=>!player.left)
+        .sort((a, b) => gameId==="QUEM_SERIA"?a.score-b.score:b.score-a.score)
         .map((player) => (
           <div key={player.id}>
             <span>
-              {player.nickname} {player.role === "HOST" && "· host"} {!player.connected && "(ausente)"}
+              {player.nickname} {!player.connected && "(ausente)"}
             </span>
             <strong>{player.score}</strong>
           </div>
@@ -711,19 +734,19 @@ function HumanityVotingView({
   privateView,
   credential,
   shared,
-  isHost,
+  isCreator,
   send
 }: {
   publicView: PublicView;
   privateView?: PrivateView;
   credential?: Credential;
   shared: boolean;
-  isHost: boolean;
+  isCreator: boolean;
   send: (type: string, payload?: Record<string, unknown>) => void;
 }) {
   const me = credential && publicView.players.find((player) => player.id === credential.playerId);
   const isPlayer = me?.role === "PLAYER";
-  const canVote = me?.role === "HOST" || me?.role === "PLAYER";
+  const canVote = me?.role === "PLAYER";
   const [selected, setSelected] = useState<string[]>([]);
   const required = publicView.currentBlackCard?.requiredWhiteCards ?? 1;
   const hasVoted = Boolean(privateView?.votedSubmissionId);
@@ -750,7 +773,7 @@ function HumanityVotingView({
         ) : (
           <h2>{publicView.phase === "FINISHED" ? "O baralho acabou." : "Aguardando a carta preta"}</h2>
         )}
-        {publicView.phase === "HOST_REVIEW" ? (
+        {publicView.phase === "VOTING" ? (
           <p>
             {publicView.voteCount ?? 0}/{publicView.totalVoters ?? 0} votos recebidos
           </p>
@@ -786,13 +809,7 @@ function HumanityVotingView({
         </section>
       )}
 
-      {!shared && publicView.phase === "INPUT_OPEN" && isHost && (
-        <section className="panel centered">
-          <p>O host não joga nesta rodada. Aguarde as respostas dos jogadores.</p>
-        </section>
-      )}
-
-      {!shared && publicView.phase === "HOST_REVIEW" && canVote && (
+      {!shared && publicView.phase === "VOTING" && canVote && (
         <section className="submission-list">
           <h3>Vote na melhor combinação</h3>
           {hasVoted && <p className="hint">Seu voto foi registrado. Aguarde os demais.</p>}
@@ -813,16 +830,16 @@ function HumanityVotingView({
 
       {publicView.phase === "ROUND_RESULTS" && (
         <section className="panel centered">
-          <h3>{publicView.winnerNickname ? `${publicView.winnerNickname} venceu a rodada` : "Rodada encerrada"}</h3>
-          <p>Combinação vencedora</p>
-          {(publicView.winningCards ?? []).map((card) => (
-            <CardTile key={card.id} card={card} />
-          ))}
+          <h3>{humanityResultTitle(Boolean(publicView.isTie),publicView.winnerNicknames??[])}</h3>
+          {(publicView.winningCombinations ?? []).map((cards,index)=><div className="winning-combination" key={`winner-${index}`}>
+            <p>{publicView.isTie?`Combinação vencedora ${index+1}`:"Combinação vencedora"}</p>
+            {cards.map((card)=><CardTile key={card.id} card={card}/>)}
+          </div>)}
         </section>
       )}
 
-      {isHost && !shared && publicView.phase === "ROUND_RESULTS" && (
-        <div className="host-actions">
+      {isCreator && !shared && publicView.phase === "ROUND_RESULTS" && (
+        <div className="round-actions">
           <button onClick={() => send("NEXT_ROUND")}>Próxima rodada</button>
         </div>
       )}

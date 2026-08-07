@@ -6,7 +6,7 @@ export type VotingCommand =
   | { type:"VOTE"; actorId:string; targetId:string };
 export interface VotingTimer { id:string; startsAt:string; expiresAt:string; }
 export interface VotingState {
-  phase:SessionPhase; version:number; players:Player[]; cards:VotingCard[]; cardIndex:number;
+  phase:SessionPhase; version:number; creatorPlayerId:string; players:Player[]; cards:VotingCard[]; cardIndex:number;
   currentCard?:VotingCard; votes:Record<string,string>; revealedVotes?:Record<string,string>;
   removedCardIds:string[]; history:{prompt:string;winnerIds:string[];at:string}[]; timer?:VotingTimer; timerDurationMs?:number;
 }
@@ -21,23 +21,23 @@ const clone=<T>(value:T):T=>structuredClone(value);
 export class QuestionVotingEngine implements GameEngine<VotingState,VotingCommand,VotingPublicView,VotingPrivateView> {
   constructor(private readonly cards:VotingCard[], private readonly now:()=>string=()=>new Date().toISOString()) {}
   createInitialState(config:GameConfig,players:Player[]):VotingState {
-    const state:VotingState={phase:"LOBBY",version:0,players:clone(players),cards:clone(this.cards),cardIndex:0,votes:{},removedCardIds:[],history:[]};
+    const state:VotingState={phase:"LOBBY",version:0,creatorPlayerId:config.creatorPlayerId??players[0]?.id??"",players:clone(players),cards:clone(this.cards),cardIndex:0,votes:{},removedCardIds:[],history:[]};
     if(config.timerSeconds&&config.timerSeconds>0) state.timerDurationMs=config.timerSeconds*1000;
     return state;
   }
   validateCommand(state:VotingState,command:VotingCommand):ValidationResult {
     const actor=state.players.find(player=>player.id===command.actorId);
     if(!actor) return {ok:false,code:"ACTOR_UNKNOWN"};
-    if(command.type==="START") return state.phase==="LOBBY"&&actor.role==="HOST"?{ok:true}:{ok:false,code:"START_FORBIDDEN"};
+    if(command.type==="START") return state.phase==="LOBBY"&&actor.id===state.creatorPlayerId?{ok:true}:{ok:false,code:"START_FORBIDDEN"};
     if(command.type==="VOTE") {
-      if(state.phase!=="INPUT_OPEN"||actor.role==="SPECTATOR"||!actor.connected) return {ok:false,code:"VOTE_FORBIDDEN"};
+      if(state.phase!=="INPUT_OPEN"||actor.role!=="PLAYER"||!actor.connected||actor.left) return {ok:false,code:"VOTE_FORBIDDEN"};
       if(state.votes[command.actorId]) return {ok:false,code:"ALREADY_VOTED"};
-      const target=state.players.find(player=>player.id===command.targetId&&player.role!=="SPECTATOR");
+      const target=state.players.find(player=>player.id===command.targetId&&player.role==="PLAYER"&&!player.left);
       return !target||(!state.currentCard?.selfVoteAllowed&&target.id===actor.id)?{ok:false,code:"TARGET_INVALID"}:{ok:true};
     }
-    if(command.type==="CLOSE_VOTING") return state.phase==="INPUT_OPEN"&&actor.role==="HOST"?{ok:true}:{ok:false,code:"CLOSE_FORBIDDEN"};
-    if(command.type==="NEXT_ROUND") return state.phase==="ROUND_RESULTS"&&actor.role==="HOST"?{ok:true}:{ok:false,code:"NEXT_ROUND_FORBIDDEN"};
-    if(command.type==="SKIP_CARD"||command.type==="REMOVE_CARD") return state.phase==="INPUT_OPEN"&&actor.role==="HOST"?{ok:true}:{ok:false,code:"CARD_ACTION_FORBIDDEN"};
+    if(command.type==="CLOSE_VOTING") return state.phase==="INPUT_OPEN"&&actor.id===state.creatorPlayerId?{ok:true}:{ok:false,code:"CLOSE_FORBIDDEN"};
+    if(command.type==="NEXT_ROUND") return state.phase==="ROUND_RESULTS"&&actor.id===state.creatorPlayerId?{ok:true}:{ok:false,code:"NEXT_ROUND_FORBIDDEN"};
+    if(command.type==="SKIP_CARD"||command.type==="REMOVE_CARD") return state.phase==="INPUT_OPEN"&&actor.id===state.creatorPlayerId?{ok:true}:{ok:false,code:"CARD_ACTION_FORBIDDEN"};
     return {ok:false,code:"COMMAND_UNKNOWN"};
   }
   applyCommand(state:VotingState,command:VotingCommand):EngineResult<VotingState> {
@@ -82,13 +82,13 @@ export class QuestionVotingEngine implements GameEngine<VotingState,VotingComman
   }
   getPrivateView(state:VotingState,playerId:string):VotingPrivateView { const player=state.players.find(candidate=>candidate.id===playerId);if(!player||player.role==="SPECTATOR") return {submitted:false,allowedTargets:[]};return {submitted:Boolean(state.votes[playerId]),allowedTargets:this.eligible(state).filter(candidate=>state.currentCard?.selfVoteAllowed||candidate.id!==playerId).map(candidate=>candidate.id)}; }
   handlePlayerJoin(state:VotingState,player:Player):EngineResult<VotingState> {
-    if(state.phase!=="LOBBY"&&player.role!=="SPECTATOR") throw new Error("LATE_JOIN_DISABLED"); const next=clone(state);next.players.push(player);next.version++;return {state:next,events:[this.event("player.joined",{playerId:player.id})]};
+    const next=clone(state);next.players.push(player);next.version++;return {state:next,events:[this.event("player.joined",{playerId:player.id})]};
   }
   handlePlayerDisconnect(state:VotingState,playerId:string):EngineResult<VotingState> {const next=clone(state);next.players=next.players.map(player=>player.id===playerId?{...player,connected:false}:player);next.version++;return {state:next,events:[this.event("player.disconnected",{playerId})]};}
   handleTimerExpired(state:VotingState,timerId:string):EngineResult<VotingState> {if(state.phase!=="INPUT_OPEN"||state.timer?.id!==timerId) return {state,events:[]};return this.close(clone(state),[this.event("timer.expired",{timerId})]);}
   isFinished(state:VotingState):boolean{return state.phase==="FINISHED"||state.phase==="CANCELLED";}
   serialize(state:VotingState):string{return JSON.stringify(state);}
   restore(serialized:string):VotingState {return JSON.parse(serialized) as VotingState;}
-  private eligible(state:VotingState):Player[]{return state.players.filter(player=>player.role!=="SPECTATOR"&&player.connected);}
+  private eligible(state:VotingState):Player[]{return state.players.filter(player=>player.role==="PLAYER"&&player.connected&&!player.left);}
   private event(type:string,data:Record<string,unknown>):DomainEvent{return {type,data,at:this.now()};}
 }

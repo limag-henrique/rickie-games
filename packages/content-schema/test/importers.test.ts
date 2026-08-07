@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { createHumanityManifest, importTextDeck } from "../src/importers.js";
+import { createHumanityManifest, importTextDeck, inferCardIntensity } from "../src/importers.js";
 import { quemSeriaCards, seBeberCards } from "../src/imported-content.js";
 
 it("preserva categorias e ignora linhas vazias do Se Beber", () => {
@@ -8,10 +8,18 @@ it("preserva categorias e ignora linhas vazias do Se Beber", () => {
     "SE_BEBER",
     "games/Se Beber, Não Jogue.txt"
   );
-  expect(cards.map(card => [card.category, card.text])).toEqual([
-    ["Desafios", "Beba 2 goles."],
-    ["Perguntas", "Qual foi seu pior beijo?"]
+  expect(cards.map(card => [card.category, card.text, card.intensity])).toEqual([
+    ["Desafios", "Beba 2 goles.", "MODERATE"],
+    ["Perguntas", "Qual foi seu pior beijo?", "MODERATE"]
   ]);
+});
+
+it("deriva a intensidade por marcadores objetivos e categoria", () => {
+  expect(inferCardIntensity("Comandos de Bebida","Quem está solteiro: 1 gole.")).toBe("LIGHT");
+  expect(inferCardIntensity("Desafios","Beba 2 goles.")).toBe("MODERATE");
+  expect(inferCardIntensity("Comandos de Bebida","Quem está de ressaca: 3 goles.")).toBe("HEAVY");
+  expect(inferCardIntensity("Perguntas constrangedoras","Qual foi seu pior beijo?")).toBe("MODERATE");
+  expect(inferCardIntensity("Mini Jogos Rápidos","Dance por 10 segundos.")).toBe("LIGHT");
 });
 
 it("gera IDs estáveis e manifesto completo de Cartas contra a humanidade", () => {

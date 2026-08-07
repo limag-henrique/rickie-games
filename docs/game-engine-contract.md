@@ -3,60 +3,58 @@
 `GameEngine<TState, TCommand, TPublicView, TPrivateView>` é pura em relação a
 HTTP, Socket.IO, banco e interface. Ela cria estado, valida comandos, aplica
 transições, gera eventos mínimos e produz projeções públicas e privadas. O
-servidor fornece relógio, identidade e persistência.
+servidor fornece relógio, identidade, autoridade do criador e persistência.
 
-## Question Voting v1
+Não existe papel administrativo. Participantes jogáveis usam `PLAYER`; a sala e
+o estado da engine guardam `creatorPlayerId` apenas para autorizar início,
+fechamento manual e avanço. O criador continua elegível para cartas, votos,
+turnos e pontuação como qualquer outro jogador.
 
-| Origem | Comando | Ator | Destino |
-|---|---|---|---|
-| `LOBBY` | `START` | HOST | `INPUT_OPEN` |
-| `INPUT_OPEN` | `VOTE` | participante conectado | `INPUT_OPEN` ou `ROUND_RESULTS` |
-| `INPUT_OPEN` | `CLOSE_VOTING` ou timer | HOST / sistema | `ROUND_RESULTS` |
-| `INPUT_OPEN` | `SKIP_CARD` / `REMOVE_CARD` | HOST | próxima carta / `FINISHED` |
-| `ROUND_RESULTS` | `NEXT_ROUND` | HOST | `INPUT_OPEN` ou `FINISHED` |
+## Regras comuns
 
-## Engines de jogos importados
+As três engines usam `RULES` antes de `INPUT_OPEN`. Cada jogador confirma com
+`ACKNOWLEDGE_RULES`; a projeção pública informa `rulesAcknowledged` por jogador.
+A confirmação é idempotente e pode ocorrer durante uma partida para entrada
+tardia. Rodadas coletivas congelam `roundPlayerIds`, de forma que novos
+jogadores só participem da próxima rodada sem bloquear a atual.
 
-As engines usam `RULES` antes de `INPUT_OPEN`. Cada jogador confirma as
-instruções com `ACKNOWLEDGE_RULES`; o host também precisa confirmar antes de
-`START_GAME`. O servidor mantém `commandId`/`expectedVersion` e não publica
-dados privados.
+`participatingPlayerIds` registra quem integrou ao menos uma rodada ou turno e é
+a fonte de elegibilidade para a consolidação do Champions. Saída ou desconexão
+remove o jogador das esperas atuais e não publica dados privados.
 
 ### Quem seria
 
-Perguntas avançam por cursor e não retornam. Jogadores confirmados escolhem um
-alvo diferente de si; `CLOSE_ROUND` bloqueia e revela votos uma única vez.
-`getPrivateView` contém somente alvos permitidos e o estado do próprio voto.
+O criador abre e avança perguntas. Jogadores da rodada escolhem secretamente um
+alvo diferente de si. Ao fechar, os votos são revelados simultaneamente e cada
+alvo com a maior contagem recebe exatamente 1 ponto, inclusive em empate. Para
+Champions, menor placar individual representa melhor colocação.
 
-### Se beber, Não Jogue
+### Se beber, não jogue
 
-Cada carta é consumida ao abrir a vez, inclusive quando o jogador pula. A carta
-fica somente na projeção privada do jogador ativo até `REVEAL_TURN_CARD`; depois
-fica pública para a roda. `COMPLETE_TURN` avança a ordem dos participantes e o
-baralho termina em `FINISHED`, sem reciclagem.
+O baralho é embaralhado uma vez e não repete cartas. A carta consumida ao abrir
+o turno existe somente na projeção privada do jogador ativo. `COMPLETE_TURN`
+soma 1 ponto e avança. `SKIP_TURN_CARD` subtrai 1 ponto, cria um desafio privado
+do mesmo nível e mantém o turno aberto; o próximo `COMPLETE_TURN` confirma a
+penalidade e avança sem pontuar. Pontuação negativa é válida.
 
 ### Cartas contra a humanidade
 
-`START_GAME` abre diretamente `INPUT_OPEN`: o `HOST` administra a partida, mas
-não recebe cartas brancas nem submete combinações. Cada `PLAYER` recebe até 10
-cartas brancas privadas a partir de um baralho global, sem repetir IDs entre
-mãos ou devolver cartas consumidas. A carta preta atual é pública e contém
-`requiredWhiteCards` (1, 2 ou 3).
+As cartas pretas são embaralhadas uma vez e avançam sem repetição. Todos os
+jogadores da rodada, inclusive o criador, recebem até dez cartas brancas,
+submetem a quantidade exigida e depois votam em `VOTING`. Mãos, autoria e votos
+individuais ficam privados até o resultado.
 
-Quando todos os `PLAYER` elegíveis enviam `PLAY_WHITE_CARDS`, a engine fecha as
-submissões automaticamente e muda para `HOST_REVIEW`. Essa fase é a etapa
-interna de votação da rodada, não uma permissão exclusiva do host. Todo membro
-elegível conectado e com regras confirmadas, inclusive o `HOST`, recebe as
-combinações por IDs anônimos em sua projeção privada e envia um
-`VOTE_SUBMISSION` único. Quando todos os votos elegíveis chegam, a rodada fecha
-automaticamente em `ROUND_RESULTS`.
+Todas as submissões com a maior contagem vencem. O autor de cada uma recebe 1
+ponto; `isTie` indica múltiplas vencedoras e a projeção pública fornece todas as
+combinações e apelidos vencedores. `NEXT_ROUND` é permitido somente ao criador.
 
-A combinação mais votada vence; empates usam a ordem anônima da rodada. O autor
-da combinação vencedora ganha um ponto. `NEXT_ROUND` continua restrito ao
-`HOST`, apenas para abrir a rodada seguinte ou finalizar quando o baralho preto
-acabar.
+## Término e ranking
 
-As projeções públicas nunca incluem mãos, autoria de submissões antes do
-resultado ou votos individuais. `playerId` das submissões e `submissionVotes`
-ficam apenas no estado interno. A combinação vencedora só é revelada em
-`ROUND_RESULTS`.
+Fim natural preserva a sala e consolida a instância uma única vez no Champions.
+`CHANGE_GAME` também consolida, cria uma nova instância e zera o placar
+individual. A sala calcula `n - posição + 1` com colocação de competição para
+empates. `Quem seria` ordena placares crescentes; os demais, decrescentes.
+
+`END_GAME` e `LEAVE_ROOM` são comandos de ciclo da sala interceptados pelo
+servidor. Encerrar ou a saída voluntária do criador remove a sala; a engine não
+persiste credenciais nem controla sockets.

@@ -4,7 +4,7 @@
 |---|---|---|
 | 0 | PRD, arquitetura, contratos, riscos e ADRs | concluída para o MVP |
 | 1 | Sala, QR, lobby, PWA, voto privado, revelação atômica, timer e demo original | funcional em processo único; persistência pendente |
-| 1b | PostgreSQL, Redis, rate limiting, host migration e testes de integração/E2E | próxima prioridade |
+| 1b | PostgreSQL, Redis, rate limiting, recuperação de sala e testes de integração/E2E | próxima prioridade |
 | 2 | Mão privada + juiz | planejada |
 | 3 | Resposta secreta + agrupamento | planejada |
 | 4 | Desafio pessoal com filtros, consentimento e modo sem álcool | planejada |

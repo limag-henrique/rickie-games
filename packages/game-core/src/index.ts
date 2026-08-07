@@ -1,7 +1,7 @@
 export type OpaqueId<T extends string> = string & { readonly __brand: T };
-export type ParticipantRole = "HOST" | "PLAYER" | "SPECTATOR" | "SHARED_SCREEN";
-export interface Player { id: OpaqueId<"player">; nickname: string; role: ParticipantRole; connected: boolean; score: number; }
-export type SessionPhase = "LOBBY" | "RULES" | "CONFIGURING" | "ROUND_PREPARING" | "ROUND_INTRO" | "INPUT_OPEN" | "INPUT_LOCKED" | "HOST_REVIEW" | "REVEALING" | "SCORING" | "ROUND_RESULTS" | "PAUSED" | "FINISHED" | "CANCELLED";
+export type ParticipantRole = "PLAYER" | "SPECTATOR";
+export interface Player { id: OpaqueId<"player">; nickname: string; role: ParticipantRole; connected: boolean; score: number; left?: boolean; }
+export type SessionPhase = "LOBBY" | "RULES" | "CONFIGURING" | "ROUND_PREPARING" | "ROUND_INTRO" | "INPUT_OPEN" | "INPUT_LOCKED" | "VOTING" | "REVEALING" | "SCORING" | "ROUND_RESULTS" | "PAUSED" | "FINISHED" | "CANCELLED";
 export interface ValidationResult { ok: boolean; code?: string; message?: string; }
 export interface EngineResult<TState> { state: TState; events: DomainEvent[]; }
 export interface DomainEvent { type: string; at: string; data: Record<string, unknown>; }
@@ -23,6 +23,7 @@ export type LateJoinPolicy = "NEVER" | "BETWEEN_ROUNDS" | "SPECTATOR_ONLY" | "UN
 export interface GameConfig {
   sessionId: string;
   deckId: string;
+  creatorPlayerId?: string;
   gameId?: string;
   timerSeconds?: number;
   lateJoinPolicy?: LateJoinPolicy;
