@@ -1,4 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=DM+Mono&family=Space+Grotesk:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono&family=Space+Grotesk:wght@400;600;700&display=swap');
 :root{font-family:"Space Grotesk",system-ui,sans-serif;color:#fff6e9;background:#10162f;line-height:1.45}
 *{box-sizing:border-box}
 body{margin:0;min-width:320px;background:radial-gradient(circle at 15% 15%,#45368f 0,transparent 32rem),#10162f}
@@ -64,8 +64,9 @@ button:disabled{cursor:not-allowed;opacity:.45;filter:none}
 .shared .scores{max-width:600px;margin:40px auto}
 .hand{margin:18px 0}
 .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin:16px 0 22px}
-.card-tile{display:block;width:100%;aspect-ratio:1.54;padding:0;min-height:0;border:3px solid transparent;border-radius:10px;background-repeat:no-repeat;background-color:#fff6e9;background-origin:border-box;box-shadow:0 8px 20px #0004}
+.card-tile{position:relative;display:block;width:100%;aspect-ratio:1.54;padding:0;min-height:0;border:3px solid transparent;border-radius:10px;background-repeat:no-repeat;background-color:#fff6e9;background-origin:border-box;box-shadow:0 8px 20px #0004}
 .card-tile.selected{border-color:#f9c74f;transform:translateY(-6px)}
+.selection-order{position:absolute;top:8px;right:8px;display:grid;place-items:center;width:2.4rem;height:2.4rem;border:2px solid #10162f;border-radius:999px;background:#f9c74f;color:#10162f;font:800 1rem "DM Mono",monospace;box-shadow:0 3px 8px #0005;pointer-events:none}
 .round-head>.card-tile{width:min(100%,440px);margin:12px auto 18px;box-shadow:0 10px 26px #0005}
 .card-tile.black{cursor:default}
 .submission-list{display:grid;gap:14px}

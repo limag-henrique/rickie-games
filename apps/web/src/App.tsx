@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { GAME_OPTIONS, humanityResultTitle, type GameId, type GameInfo } from "./game-copy";
 import { getApiBaseUrl } from "./api-base";
 import { RoomDrawer, type ChampionItem } from "./RoomDrawer";
+import { toggleOrderedCard } from "./ordered-card-selection";
 
 const api = getApiBaseUrl({
   apiUrl: import.meta.env.VITE_API_URL,
@@ -666,10 +667,12 @@ function DrinkView({
 function CardTile({
   card,
   selected = false,
+  selectionOrder,
   onClick
 }: {
   card: ImageCard;
   selected?: boolean;
+  selectionOrder?: number;
   onClick?: () => void;
 }) {
   const xPositions = [7.2, 49.9, 92.5];
@@ -686,8 +689,12 @@ function CardTile({
       className={`card-tile ${card.kind.toLowerCase()} ${selected ? "selected" : ""}`}
       style={style}
       onClick={onClick}
-      aria-label={card.kind === "WHITE" ? "Carta branca" : "Carta preta"}
-    />
+      aria-label={card.kind === "WHITE"
+        ? `Carta branca${selectionOrder ? `, ${selectionOrder}ª selecionada` : ""}`
+        : "Carta preta"}
+    >
+      {selectionOrder && <span className="selection-order" aria-hidden="true">{selectionOrder}ª</span>}
+    </button>
   );
 }
 
@@ -756,13 +763,7 @@ function HumanityVotingView({
   }, [publicView.currentBlackCard?.id, publicView.phase]);
 
   const toggle = (id: string) =>
-    setSelected((cards) =>
-      cards.includes(id)
-        ? cards.filter((cardId) => cardId !== id)
-        : cards.length < required
-          ? [...cards, id]
-          : cards
-    );
+    setSelected((cards) => toggleOrderedCard(cards, id, required));
 
   return (
     <>
@@ -795,6 +796,7 @@ function HumanityVotingView({
                 key={card.id}
                 card={card}
                 selected={selected.includes(card.id)}
+                selectionOrder={selected.includes(card.id) ? selected.indexOf(card.id) + 1 : undefined}
                 onClick={() => toggle(card.id)}
               />
             ))}

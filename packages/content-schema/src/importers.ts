@@ -42,14 +42,16 @@ export function importTextDeck(raw:string, gameId:GameId, sourceFile:string):Tex
   return cards;
 }
 
-const blackRequiredWhiteCards:number[] = [
-  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-  1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,3,
-  1,1,1,2,1,1,1,1,1,2,1,2,1,1,1,1,1,1,1
-];
+const pickTwoBlackCardNumbers = new Set([
+  76, 77, 78, 79, 80, 81, 82, 83, 84, 96, 98
+]);
+const pickThreeBlackCardNumbers = new Set([85, 86]);
+
+function requiredWhiteCardsFor(cardNumber:number):1|2|3 {
+  if (pickThreeBlackCardNumbers.has(cardNumber)) return 3;
+  if (pickTwoBlackCardNumbers.has(cardNumber)) return 2;
+  return 1;
+}
 
 function createCard(kind:"BLACK"|"WHITE", page:number, row:number, column:number, requiredWhiteCards?:1|2|3):ImageCard {
   return imageCardSchema.parse({
@@ -68,13 +70,11 @@ function createCard(kind:"BLACK"|"WHITE", page:number, row:number, column:number
 export function createHumanityManifest():{black:ImageCard[];white:ImageCard[]} {
   const black:ImageCard[] = [];
   const white:ImageCard[] = [];
-  let index = 0;
   for (let page = 1; page <= 5; page++) {
     for (let row = 0; row < 7; row++) {
       for (let column = 0; column < 3; column++) {
-        const required = blackRequiredWhiteCards[index++];
-        if (!required || ![1,2,3].includes(required)) throw new Error("Manifesto preto inválido");
-        black.push(createCard("BLACK",page,row,column,required as 1|2|3));
+        const cardNumber = (page - 1) * 21 + row * 3 + column + 1;
+        black.push(createCard("BLACK",page,row,column,requiredWhiteCardsFor(cardNumber)));
       }
     }
   }

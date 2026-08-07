@@ -118,3 +118,29 @@ it("publishes acknowledgement state but keeps hands and votes private", () => {
   expect(publicView).not.toHaveProperty("hands");
   expect(publicView).not.toHaveProperty("submissionVotes");
 });
+
+it("preserves the chosen card order through anonymous voting and the winning result", () => {
+  const pickTwoBlackCards=[
+    {...blackCards[0]!,requiredWhiteCards:2 as const},
+    ...blackCards.slice(1)
+  ];
+  const engine=new CartasContraHumanidadeEngine(pickTwoBlackCards,whiteCards,undefined,()=>0.99);
+  let state=start(engine);
+  const biaCards=[state.hands.bia![1]!,state.hands.bia![0]!];
+
+  for (const playerId of state.roundPlayerIds) {
+    const cardIds=playerId==="bia"?biaCards:state.hands[playerId]!.slice(0,2);
+    state=engine.applyCommand(state,{type:"PLAY_WHITE_CARDS",actorId:playerId,cardIds}).state;
+  }
+
+  expect(state.phase).toBe("VOTING");
+  const biaSubmissionId=state.submissions.bia!.id;
+  const biaSubmission=engine.getPrivateView(state,"ana").submissions?.find(submission=>submission.id===biaSubmissionId);
+  expect(biaSubmission?.cards.map(card=>card.id)).toEqual(biaCards);
+
+  for (const playerId of state.roundPlayerIds) {
+    state=engine.applyCommand(state,{type:"VOTE_SUBMISSION",actorId:playerId,submissionId:biaSubmissionId}).state;
+  }
+
+  expect(engine.getPublicView(state).winningCombinations?.[0]?.map(card=>card.id)).toEqual(biaCards);
+});

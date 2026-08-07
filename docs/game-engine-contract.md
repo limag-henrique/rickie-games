@@ -48,6 +48,11 @@ Todas as submissões com a maior contagem vencem. O autor de cada uma recebe 1
 ponto; `isTie` indica múltiplas vencedoras e a projeção pública fornece todas as
 combinações e apelidos vencedores. `NEXT_ROUND` é permitido somente ao criador.
 
+No conteúdo auditado, `CAH_BLACK_076` a `CAH_BLACK_084`, `CAH_BLACK_096` e
+`CAH_BLACK_098` exigem duas cartas; `CAH_BLACK_085` e `CAH_BLACK_086` exigem
+três. A ordem de `cardIds` em `PLAY_WHITE_CARDS` é semântica: a engine a
+preserva nas combinações anônimas da votação e nas combinações vencedoras.
+
 ## Término e ranking
 
 Fim natural preserva a sala e consolida a instância uma única vez no Champions.
