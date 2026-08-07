@@ -59,7 +59,7 @@ export function RoomDrawer({
     >
       {open?"×":"☰"}
     </button>
-    {open&&<button type="button" className="drawer-overlay" aria-label="Fechar menu da sala" onClick={()=>setOpen(false)}/>} 
+    {open&&<button type="button" className="drawer-overlay" aria-label="Fechar menu da sala" onClick={()=>setOpen(false)}/>}
     <aside id="room-drawer" className={`room-drawer ${open?"open":""}`} aria-hidden={!open}>
       <div className="drawer-tabs" role="tablist" aria-label="Menu da sala">
         <button type="button" role="tab" aria-selected={tab==="ROOM"} onClick={()=>setTab("ROOM")}>Sala</button>

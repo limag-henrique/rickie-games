@@ -464,4 +464,3 @@ Map each original bullet to a passing test, projection, route behavior, rendered
 - [ ] **Step 5: Final review checkpoint without committing**
 
 Report changed files, verification results, known limitations, branch name, and explicitly state that no commit was created.
-
